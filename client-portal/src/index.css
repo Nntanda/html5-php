@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Print Styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  
+  .print-content,
+  .print-content * {
+    visibility: visible;
+  }
+  
+  .print-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  
+  /* Hide non-printable elements */
+  .no-print,
+  button,
+  nav,
+  header,
+  footer,
+  .sidebar {
+    display: none !important;
+  }
+  
+  /* Ensure proper page breaks */
+  .print-content {
+    page-break-after: auto;
+  }
+  
+  /* Optimize for printing */
+  @page {
+    margin: 1cm;
+    size: A4;
+  }
+}

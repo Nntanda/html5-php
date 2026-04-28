@@ -1,0 +1,87 @@
+# SACCO Management System - Git Ignore
+
+# Backend (Laravel)
+backend/vendor/
+backend/node_modules/
+backend/.env
+backend/.env.backup
+backend/.phpunit.result.cache
+backend/Homestead.json
+backend/Homestead.yaml
+backend/npm-debug.log
+backend/yarn-error.log
+backend/storage/*.key
+backend/storage/app/*
+!backend/storage/app/.gitignore
+backend/storage/framework/cache/*
+!backend/storage/framework/cache/.gitignore
+backend/storage/framework/sessions/*
+!backend/storage/framework/sessions/.gitignore
+backend/storage/framework/testing/*
+!backend/storage/framework/testing/.gitignore
+backend/storage/framework/views/*
+!backend/storage/framework/views/.gitignore
+backend/storage/logs/*
+!backend/storage/logs/.gitignore
+backend/storage/backups/*
+!backend/storage/backups/.gitignore
+backend/public/hot
+backend/public/storage
+backend/bootstrap/cache/*
+!backend/bootstrap/cache/.gitignore
+
+# Admin App (React)
+admin-app/node_modules/
+admin-app/dist/
+admin-app/.env
+admin-app/.env.local
+admin-app/.env.production
+admin-app/.DS_Store
+admin-app/coverage/
+admin-app/*.log
+
+# Client Portal (React)
+client-portal/node_modules/
+client-portal/dist/
+client-portal/.env
+client-portal/.env.local
+client-portal/.env.production
+client-portal/.DS_Store
+client-portal/coverage/
+client-portal/*.log
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS files
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+
+# Backup files
+*.backup
+*.bak
+*.old
+
+# Documentation builds
+docs/_build/

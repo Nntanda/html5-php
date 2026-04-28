@@ -1,0 +1,37 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('loan_guarantors', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('loan_id')->constrained()->onDelete('cascade');
+            $table->foreignId('guarantor_member_id')->constrained('members')->onDelete('cascade');
+            $table->decimal('guaranteed_amount', 15, 2);
+            $table->enum('status', ['pending', 'accepted', 'rejected', 'withdrawn'])->default('pending');
+            $table->date('approval_date')->nullable();
+            $table->text('rejection_reason')->nullable();
+            $table->timestamps();
+            
+            $table->index('loan_id');
+            $table->index('guarantor_member_id');
+            $table->index('status');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('loan_guarantors');
+    }
+};

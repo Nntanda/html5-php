@@ -1,0 +1,426 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 0 * * 0' # Weekly security scan on Sunday
+  workflow_dispatch: # Manual trigger
+
+env:
+  PHP_VERSION: '8.2'
+  NODE_VERSION: '20'
+
+jobs:
+  # ============================================
+  # BACKEND JOBS
+  # ============================================
+  
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_DATABASE: sacco_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ env.PHP_VERSION }}
+        extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, dom, filter, gd, json, bcmath
+        coverage: xdebug
+
+    - name: Cache Composer dependencies
+      uses: actions/cache@v3
+      with:
+        path: backend/vendor
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: ${{ runner.os }}-composer-
+
+    - name: Install dependencies
+      working-directory: backend
+      run: composer install --prefer-dist --no-progress --no-interaction
+
+    - name: Copy .env
+      working-directory: backend
+      run: |
+        cp .env.example .env
+        sed -i 's/DB_DATABASE=.*/DB_DATABASE=sacco_test/' .env
+        sed -i 's/DB_USERNAME=.*/DB_USERNAME=root/' .env
+        sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=password/' .env
+
+    - name: Generate key
+      working-directory: backend
+      run: php artisan key:generate
+
+    - name: Directory Permissions
+      working-directory: backend
+      run: chmod -R 777 storage bootstrap/cache
+
+    - name: Run Migrations
+      working-directory: backend
+      run: php artisan migrate --force
+
+    - name: Execute tests
+      working-directory: backend
+      run: php artisan test --coverage --min=70
+
+    - name: Upload coverage
+      if: github.event_name != 'schedule'
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./backend/coverage.xml
+        flags: backend
+        name: backend-coverage
+
+  backend-security:
+    name: Backend Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ env.PHP_VERSION }}
+
+    - name: Install dependencies
+      working-directory: backend
+      run: composer install --prefer-dist --no-progress
+
+    - name: Security audit
+      working-directory: backend
+      run: composer audit
+
+  backend-quality:
+    name: Backend Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ env.PHP_VERSION }}
+
+    - name: Install dependencies
+      working-directory: backend
+      run: composer install --prefer-dist --no-progress
+
+    - name: PHP CodeSniffer
+      working-directory: backend
+      run: |
+        if [ -f phpcs.xml ]; then
+          vendor/bin/phpcs
+        else
+          echo "phpcs.xml not found, skipping"
+        fi
+      continue-on-error: true
+
+    - name: PHPStan
+      working-directory: backend
+      run: |
+        if [ -f phpstan.neon ]; then
+          vendor/bin/phpstan analyse
+        else
+          echo "phpstan.neon not found, skipping"
+        fi
+      continue-on-error: true
+
+  # ============================================
+  # ADMIN APP JOBS
+  # ============================================
+  
+  admin-app-test:
+    name: Admin App Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: admin-app/package-lock.json
+
+    - name: Install dependencies
+      working-directory: admin-app
+      run: npm ci
+
+    - name: Lint
+      working-directory: admin-app
+      run: npm run lint
+
+    - name: Type check
+      working-directory: admin-app
+      run: npx tsc --noEmit
+
+    - name: Build
+      working-directory: admin-app
+      run: npm run build
+
+    - name: Upload build artifacts
+      if: github.ref == 'refs/heads/main'
+      uses: actions/upload-artifact@v3
+      with:
+        name: admin-app-dist
+        path: admin-app/dist
+        retention-days: 7
+
+  admin-app-security:
+    name: Admin App Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Install dependencies
+      working-directory: admin-app
+      run: npm ci
+
+    - name: Security audit
+      working-directory: admin-app
+      run: npm audit --audit-level=moderate
+
+  # ============================================
+  # CLIENT PORTAL JOBS
+  # ============================================
+  
+  client-portal-test:
+    name: Client Portal Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: client-portal/package-lock.json
+
+    - name: Install dependencies
+      working-directory: client-portal
+      run: npm ci
+
+    - name: Lint
+      working-directory: client-portal
+      run: npm run lint
+
+    - name: Type check
+      working-directory: client-portal
+      run: npx tsc --noEmit
+
+    - name: Build
+      working-directory: client-portal
+      run: npm run build
+
+    - name: Upload build artifacts
+      if: github.ref == 'refs/heads/main'
+      uses: actions/upload-artifact@v3
+      with:
+        name: client-portal-dist
+        path: client-portal/dist
+        retention-days: 7
+
+  client-portal-security:
+    name: Client Portal Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Install dependencies
+      working-directory: client-portal
+      run: npm ci
+
+    - name: Security audit
+      working-directory: client-portal
+      run: npm audit --audit-level=moderate
+
+  # ============================================
+  # DEPENDENCY REVIEW (PR only)
+  # ============================================
+  
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Dependency Review
+      uses: actions/dependency-review-action@v3
+
+  # ============================================
+  # DEPLOYMENT (main branch only)
+  # ============================================
+  
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: 
+      - backend-test
+      - backend-security
+      - admin-app-test
+      - admin-app-security
+      - client-portal-test
+      - client-portal-security
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Backend deployment package
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ env.PHP_VERSION }}
+
+    - name: Install backend dependencies
+      working-directory: backend
+      run: composer install --prefer-dist --no-dev --optimize-autoloader
+
+    - name: Create backend deployment package
+      run: |
+        cd backend
+        tar -czf ../backend-deploy.tar.gz \
+          --exclude='.env' \
+          --exclude='tests' \
+          --exclude='storage/logs/*' \
+          --exclude='storage/framework/cache/*' \
+          --exclude='storage/framework/sessions/*' \
+          --exclude='storage/framework/views/*' \
+          .
+
+    - name: Upload backend package
+      uses: actions/upload-artifact@v3
+      with:
+        name: backend-package
+        path: backend-deploy.tar.gz
+        retention-days: 30
+
+    # Admin app deployment
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Build admin app
+      working-directory: admin-app
+      run: |
+        npm ci
+        npm run build
+
+    - name: Upload admin app package
+      uses: actions/upload-artifact@v3
+      with:
+        name: admin-app-package
+        path: admin-app/dist
+        retention-days: 30
+
+    # Client portal deployment
+    - name: Build client portal
+      working-directory: client-portal
+      run: |
+        npm ci
+        npm run build
+
+    - name: Upload client portal package
+      uses: actions/upload-artifact@v3
+      with:
+        name: client-portal-package
+        path: client-portal/dist
+        retention-days: 30
+
+    - name: Deployment ready
+      run: |
+        echo "✅ All deployment packages created successfully"
+        echo "📦 Backend: backend-deploy.tar.gz"
+        echo "📦 Admin App: admin-app/dist"
+        echo "📦 Client Portal: client-portal/dist"
+        echo ""
+        echo "Configure deployment secrets to enable automatic deployment:"
+        echo "- DEPLOY_HOST: Production server hostname"
+        echo "- DEPLOY_USER: SSH username"
+        echo "- DEPLOY_KEY: SSH private key"
+        echo "- DEPLOY_PATH: Deployment directory"
+
+    # Add your deployment steps here
+    # Example SSH deployment (uncomment and configure):
+    # - name: Deploy to server
+    #   uses: appleboy/ssh-action@master
+    #   with:
+    #     host: ${{ secrets.DEPLOY_HOST }}
+    #     username: ${{ secrets.DEPLOY_USER }}
+    #     key: ${{ secrets.DEPLOY_KEY }}
+    #     script: |
+    #       cd ${{ secrets.DEPLOY_PATH }}
+    #       # Add your deployment commands here
+
+  # ============================================
+  # STATUS SUMMARY
+  # ============================================
+  
+  status-check:
+    name: All Checks Passed
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - backend-test
+      - backend-security
+      - backend-quality
+      - admin-app-test
+      - admin-app-security
+      - client-portal-test
+      - client-portal-security
+    
+    steps:
+    - name: Check status
+      run: |
+        if [ "${{ needs.backend-test.result }}" != "success" ] || \
+           [ "${{ needs.admin-app-test.result }}" != "success" ] || \
+           [ "${{ needs.client-portal-test.result }}" != "success" ]; then
+          echo "❌ Some tests failed"
+          exit 1
+        else
+          echo "✅ All tests passed"
+        fi
